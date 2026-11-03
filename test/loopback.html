@@ -1,0 +1,54 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Meet Mixer loopback test</title>
+<!-- Loaded first, like the extension does on Meet. -->
+<script src="../extension/inject.js"></script>
+<style>
+  body { font-family: Arial, sans-serif; background: #202124; color: #e8eaed; padding: 24px; }
+  button { font-size: 16px; padding: 8px 16px; }
+</style>
+</head>
+<body>
+<h1>Meet Mixer loopback test</h1>
+<p>Start plays two tones (440 Hz and 660 Hz, taking turns every 2 s) over a call to this same page. Each tone shows up as its own voice in the panel.</p>
+<button id="start">Start</button>
+<pre id="log"></pre>
+<script>
+document.getElementById('start').addEventListener('click', async () => {
+  const ac = new AudioContext();
+  const sender = new RTCPeerConnection();
+  const receiver = new RTCPeerConnection();
+  sender.onicecandidate = (e) => e.candidate && receiver.addIceCandidate(e.candidate);
+  receiver.onicecandidate = (e) => e.candidate && sender.addIceCandidate(e.candidate);
+
+  for (const [i, freq] of [[0, 440], [1, 660]]) {
+    const osc = ac.createOscillator();
+    osc.frequency.value = freq;
+    const amp = ac.createGain();
+    amp.gain.value = 0;
+    // Take turns: tone 1 in even 2-second blocks, tone 2 in odd ones.
+    for (let t = 0; t < 120; t += 2) amp.gain.setValueAtTime((t / 2) % 2 === i ? 0.2 : 0, ac.currentTime + t);
+    const dest = ac.createMediaStreamDestination();
+    osc.connect(amp).connect(dest);
+    osc.start();
+    sender.addTrack(dest.stream.getAudioTracks()[0], dest.stream);
+  }
+
+  receiver.ontrack = (e) => {
+    const el = new Audio();
+    el.srcObject = e.streams[0];
+    el.play();
+    document.body.append(el);
+  };
+
+  await sender.setLocalDescription();
+  await receiver.setRemoteDescription(sender.localDescription);
+  await receiver.setLocalDescription();
+  await sender.setRemoteDescription(receiver.localDescription);
+  document.getElementById('log').textContent = 'Call running.';
+});
+</script>
+</body>
+</html>

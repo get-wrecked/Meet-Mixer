@@ -1,0 +1,243 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Meet Mixer tour</title>
+<!-- A 12 s looping feature tour, 960 × 540. window.render(t) draws the moment t (seconds), so every
+     frame is exact. Open with ?play to watch it; node promo/render-tour.js makes GIF + MP4. -->
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 960px; height: 540px; overflow: hidden; position: relative;
+    font-family: "Segoe UI", Roboto, Arial, sans-serif; color: #e8eaed;
+    background: radial-gradient(circle at 70% 45%, #1a3a6e 0%, #14213a 40%, #0f1115 80%);
+  }
+  .brand { position: absolute; left: 32px; top: 26px; display: flex; align-items: center; gap: 12px; font-size: 26px; font-weight: 700; }
+  .caption {
+    position: absolute; left: 32px; top: 84px; font-size: 30px; font-weight: 600; color: #8ab4f8;
+    white-space: nowrap;
+  }
+  .step { position: absolute; left: 32px; top: 128px; display: flex; gap: 8px; }
+  .step i { width: 34px; height: 5px; border-radius: 3px; background: #3c4043; }
+  .step i.on { background: #8ab4f8; }
+
+  .tiles { position: absolute; left: 32px; top: 168px; width: 440px; height: 340px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .tile { position: relative; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 30px; font-weight: 600; color: #fff; outline: 3px solid transparent; outline-offset: -3px; }
+  .tile b { width: 64px; height: 64px; border-radius: 50%; background: rgba(255,255,255,.18); display: flex; align-items: center; justify-content: center; }
+  .tile span { position: absolute; left: 12px; bottom: 9px; font-size: 14px; font-weight: 500; }
+
+  .panel { position: absolute; left: 512px; top: 64px; width: 410px; height: 444px; padding: 16px 20px; background: #202124; border-radius: 16px; box-shadow: 0 18px 50px rgba(0,0,0,.55); overflow: hidden; }
+  .panel h2 { font-size: 18px; font-weight: 600; margin-bottom: 2px; }
+  .panel .status { font-size: 12px; color: #9aa0a6; margin-bottom: 12px; }
+  .search { border: 1px solid #5f6368; background: #303134; border-radius: 9px; padding: 7px 12px; font-size: 14px; color: #9aa0a6; height: 36px; }
+  .search.typed { color: #e8eaed; border-color: #8ab4f8; }
+  .rows { position: relative; margin-top: 8px; }
+  .row { position: absolute; left: 0; right: 0; height: 74px; padding: 12px 0; border-top: 1px solid #3c4043; background: #202124; }
+  .top { display: flex; align-items: center; gap: 8px; font-size: 16px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #5f6368; flex: none; }
+  .name { flex: 1; }
+  .pct { width: 56px; text-align: right; }
+  .pin, .mute { width: 28px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+  .mute { background: #3c4043; }
+  .meter { height: 3px; background: #3c4043; border-radius: 2px; margin: 8px 0 7px; overflow: hidden; }
+  .meter div { height: 100%; width: 0; background: #81c995; }
+  .slider { position: relative; height: 6px; background: #5f6368; border-radius: 3px; }
+  .slider .fill { position: absolute; left: 0; top: 0; bottom: 0; background: #8ab4f8; border-radius: 3px; }
+  .slider .knob { position: absolute; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: #8ab4f8; }
+
+  .cursor { position: absolute; left: 0; top: 0; width: 26px; height: 26px; pointer-events: none; z-index: 10; }
+  .ripple { position: absolute; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; border: 3px solid #8ab4f8; z-index: 9; opacity: 0; }
+  .fade { position: absolute; inset: 0; background: #0f1115; z-index: 20; opacity: 0; }
+</style>
+</head>
+<body>
+  <div class="brand">
+    <svg width="40" height="40" viewBox="0 0 128 128">
+      <rect width="128" height="128" rx="28" fill="#1a73e8"/>
+      <rect x="36" y="26" width="8" height="76" fill="#98c0f5"/><circle cx="40" cy="82" r="13" fill="#fff"/>
+      <rect x="60" y="26" width="8" height="76" fill="#98c0f5"/><circle cx="64" cy="44" r="13" fill="#fff"/>
+      <rect x="84" y="26" width="8" height="76" fill="#98c0f5"/><circle cx="88" cy="64" r="13" fill="#fff"/>
+    </svg>
+    Meet Mixer
+  </div>
+  <div class="caption" id="caption"></div>
+  <div class="step" id="step"><i></i><i></i><i></i><i></i></div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="panel">
+    <h2>Meet Mixer</h2>
+    <div class="status">3 of 3 audio streams linked · 4 voices</div>
+    <div class="search" id="search">Search people</div>
+    <div class="rows" id="rows"></div>
+  </div>
+
+  <div class="ripple" id="ripple"></div>
+  <svg class="cursor" id="cursor" viewBox="0 0 26 26">
+    <path d="M3 2 L3 21 L8 16.5 L11.5 24 L15 22.5 L11.6 15.2 L18 15.2 Z" fill="#fff" stroke="#111" stroke-width="1.6" stroke-linejoin="round"/>
+  </svg>
+  <div class="fade" id="fade"></div>
+
+<script>
+// Made-up people. order = place in the list; tile = colour of their Meet tile.
+const people = [
+  { name: 'Sam Patel', pct: 140, pinned: true, muted: false, tile: '#6b2d3c' },
+  { name: 'Alex Rivera', pct: 100, pinned: false, muted: false, tile: '#2f4f7a' },
+  { name: 'Jordan Lee', pct: 80, pinned: false, muted: false, tile: '#3f5a3a' },
+  { name: 'Taylor Kim', pct: 100, pinned: false, muted: false, tile: '#5b3f7a' },
+];
+const ROW = 74;
+
+const tiles = document.getElementById('tiles');
+const rows = document.getElementById('rows');
+for (const p of people) {
+  const tile = document.createElement('div');
+  tile.className = 'tile';
+  tile.style.background = p.tile;
+  tile.innerHTML = `<b>${p.name[0]}</b><span>${p.name}</span>`;
+  tiles.append(tile);
+  p.tileEl = tile;
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = `<div class="top"><span class="dot"></span><span class="name">${p.name}</span><span class="pct"></span>`
+    + `<span class="pin">📌</span><span class="mute"></span></div><div class="meter"><div></div></div>`
+    + `<div class="slider"><div class="fill"></div><div class="knob"></div></div>`;
+  rows.append(row);
+  p.el = row;
+}
+
+// Helpers: progress of t between a and b (0..1), eased.
+const clamp = (x) => Math.max(0, Math.min(1, x));
+const ease = (x) => (x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2);
+const between = (t, a, b) => ease(clamp((t - a) / (b - a)));
+const lerp = (a, b, k) => a + (b - a) * k;
+// A talking level that looks like speech, the same for the same t.
+const speech = (t, seed) => Math.abs(Math.sin(t * 11 + seed) * Math.sin(t * 4.7 + seed * 3)) * 0.85 + 0.15;
+
+// Where things are, in page pixels, measured from the page itself.
+const rowsBox = rows.getBoundingClientRect();
+const searchBox = document.getElementById('search').getBoundingClientRect();
+const rowY = (i) => rowsBox.top + i * ROW;            // top edge of list place i
+const TOP_LINE = 12 + 13;                              // middle of a row's name line
+const SLIDER_LINE = 12 + 26 + 18 + 3;                  // middle of a row's slider
+const knobX = (pct) => rowsBox.left + rowsBox.width * (pct / 300);
+const muteX = rowsBox.right - 14;
+const pinX = muteX - 28 - 8;
+const searchPos = { x: searchBox.left + 110, y: searchBox.top + searchBox.height / 2 };
+
+const STEPS = [
+  { at: 0, text: 'Turn someone down' },
+  { at: 3.3, text: 'Mute someone just for you' },
+  { at: 5.6, text: 'Pin people to the top' },
+  { at: 7.9, text: 'Find anyone in big calls' },
+];
+
+function drawFrame(t) {
+  // Step caption.
+  let step = 0;
+  STEPS.forEach((s, i) => { if (t >= s.at) step = i; });
+  document.getElementById('caption').textContent = STEPS[step].text;
+  [...document.getElementById('step').children].forEach((el, i) => el.classList.toggle('on', i <= step));
+
+  const [sam, alex, jordan, taylor] = people;
+
+  // 1. Alex talks loudly; the cursor drags his slider from 100 % down to 30 %.
+  alex.pct = Math.round(lerp(100, 30, between(t, 1.5, 2.6)) / 5) * 5;
+  // 2. Taylor talks, then gets muted.
+  taylor.muted = t >= 4.6;
+  // 3. Jordan gets pinned and moves up.
+  jordan.pinned = t >= 6.5;
+  const moveUp = between(t, 6.6, 7.2);
+  // 4. Search for "sa": only Sam stays.
+  const typed = t >= 10.6 ? '' : t >= 9.0 ? 'sa' : t >= 8.75 ? 's' : '';
+  const search = document.getElementById('search');
+  search.textContent = typed || 'Search people';
+  search.classList.toggle('typed', t >= 8.5 && t < 10.6);
+  const filtered = typed === 'sa' ? between(t, 9.05, 9.4) : 0;
+
+  // Who is talking when (level 0..1 before the volume).
+  const talk = new Map([
+    [alex, t < 3.1 ? speech(t, 1) : 0],
+    [taylor, t >= 3.6 && t < 5.4 ? speech(t, 2) : 0],
+    [sam, t >= 7.6 && t < 10.4 ? speech(t, 3) : 0],
+    [jordan, t >= 5.6 && t < 6.4 ? speech(t, 4) : 0],
+  ]);
+
+  // List order: pinned on top (Sam, then Jordan once pinned).
+  const place = { sam: 0, alex: lerp(1, 2, moveUp), jordan: lerp(2, 1, moveUp), taylor: 3 };
+  const placeOf = [place.sam, place.alex, place.jordan, place.taylor];
+  people.forEach((p, i) => {
+    const r = p.el;
+    const hidden = p === sam ? 0 : filtered;
+    r.style.top = `${placeOf[i] * ROW}px`;
+    r.style.zIndex = p === jordan ? '2' : '1'; // Jordan slides over Alex when pinned
+    r.style.opacity = String(1 - hidden);
+    const heard = talk.get(p) * (p.muted ? 0 : p.pct / 100);
+    r.querySelector('.dot').style.background = talk.get(p) > 0 ? '#81c995' : '#5f6368';
+    r.querySelector('.meter div').style.width = `${Math.min(100, heard * 80)}%`;
+    r.querySelector('.pct').textContent = `${p.pct} %`;
+    r.querySelector('.pin').style.opacity = p.pinned ? '1' : '0.3';
+    r.querySelector('.mute').textContent = p.muted ? '🔇' : '🔊';
+    r.querySelector('.slider').style.opacity = p.muted ? '0.4' : '1';
+    const w = `${(p.pct / 300) * 100}%`;
+    r.querySelector('.fill').style.width = w;
+    r.querySelector('.knob').style.left = w;
+    // The tile shows a blue frame while that person talks (as in Meet).
+    p.tileEl.style.outlineColor = talk.get(p) > 0 ? '#8ab4f8' : 'transparent';
+  });
+
+  // The cursor's path: [time, x, y]. It glides between points.
+  const alexY = rowY(1) + SLIDER_LINE;
+  const path = [
+    [0, 980, 520], [0.6, 980, 520],
+    [1.4, knobX(100), alexY], [1.5, knobX(100), alexY], [2.6, knobX(30), alexY], [2.9, knobX(30), alexY],
+    [4.3, muteX, rowY(3) + TOP_LINE], [5.4, muteX, rowY(3) + TOP_LINE],
+    [6.3, pinX, rowY(2) + TOP_LINE], [6.6, pinX, rowY(2) + TOP_LINE], [7.2, pinX, rowY(1) + TOP_LINE], [7.9, pinX, rowY(1) + TOP_LINE],
+    [8.5, searchPos.x, searchPos.y], [10.2, searchPos.x, searchPos.y], [11, 980, 520], [12, 980, 520],
+  ];
+  let x = path[0][1], y = path[0][2];
+  for (let i = 0; i < path.length - 1; i++) {
+    const [ta, xa, ya] = path[i], [tb, xb, yb] = path[i + 1];
+    if (t >= ta && t <= tb) {
+      // Holding the slider knob moves the cursor straight with it, not eased.
+      const k = ta === 1.5 ? between(t, 1.5, 2.6) : ease(clamp((t - ta) / (tb - ta)));
+      x = lerp(xa, xb, k); y = lerp(ya, yb, k);
+    }
+  }
+  const cursor = document.getElementById('cursor');
+  cursor.style.transform = `translate(${x - 3}px, ${y - 2}px)`;
+
+  // A click ripple at each click.
+  const clicks = [[1.45, knobX(100), alexY], [4.5, muteX, rowY(3) + TOP_LINE], [6.45, pinX, rowY(2) + TOP_LINE], [8.6, searchPos.x, searchPos.y]];
+  const ripple = document.getElementById('ripple');
+  ripple.style.opacity = '0';
+  for (const [tc, cx, cy] of clicks) {
+    const k = (t - tc) / 0.45;
+    if (k >= 0 && k <= 1) {
+      ripple.style.left = `${cx}px`;
+      ripple.style.top = `${cy}px`;
+      ripple.style.opacity = String(1 - k);
+      ripple.style.transform = `scale(${0.5 + k})`;
+    }
+  }
+
+  // Fade out at the end and in at the start, so the loop is smooth.
+  document.getElementById('fade').style.opacity = String(Math.max(1 - t / 0.3, between(t, 11.6, 12)));
+}
+
+// Back to the start for the next loop.
+function reset() {
+  people[0].pct = 140; people[1].pct = 100; people[2].pct = 80; people[3].pct = 100;
+}
+
+window.TOUR_SECONDS = 12;
+window.render = (t) => { reset(); drawFrame(t); };
+window.render(0.5);
+if (location.search.includes('play')) {
+  const start = performance.now();
+  const loop = () => { window.render(((performance.now() - start) / 1000) % 12); requestAnimationFrame(loop); };
+  loop();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+claude-tmp/
+*.zip
+*.crx
+*.pem
+CLAUDE.local.md
+.claude/

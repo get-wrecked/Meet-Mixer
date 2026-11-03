@@ -1,0 +1,110 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Meet Mixer Meet-like test</title>
+<!-- Loaded first, like the extension does on Meet. -->
+<script src="../extension/inject.js"></script>
+<style>
+  body { font-family: Arial, sans-serif; background: #202124; color: #e8eaed; padding: 24px; }
+  button { font-size: 16px; padding: 8px 16px; }
+</style>
+</head>
+<body>
+<h1>Meet Mixer Meet-like test</h1>
+<p>Works like Meet: the call's audio is taken out as encoded streams (so Chrome doesn't play it), a 'neteq-processor' worklet plays the "decoded" voices (one output per slot) to the speakers, and a copy of each output goes to a second context through destination nodes. Two tones take turns every 2 s; each should link to its own slot, and its slider should change what reaches the speakers.</p>
+<button id="start">Start</button>
+<pre id="log"></pre>
+<!-- Like Meet's tiles: each person's element has data-participant-id; while someone talks,
+     Meet changes classes on their tile. Tone 1 is Anna, tone 2 is Ben, "You" never talks. -->
+<div id="tiles" style="display: flex; gap: 12px; margin-top: 16px;">
+  <!-- Button texts come first on a real Meet tile, like here. -->
+  <div class="tile" data-participant-id="spaces/x/devices/101"><b hidden>Pin Anna Example to your main screen</b><b hidden>Mute</b><b hidden>More options for Anna Example</b><div class="ring"></div><span>Anna Example</span><i>more_vert</i></div>
+  <div class="tile" data-participant-id="spaces/x/devices/102"><b hidden>Pin Ben Example to your main screen</b><b hidden>More options for Ben Example</b><div class="ring"></div><span>Ben Example</span><i>mic_off</i></div>
+  <div class="tile" data-participant-id="spaces/x/devices/103"><div class="ring"></div><span data-self-name="You">You</span></div>
+</div>
+<script>
+document.getElementById('start').addEventListener('click', async () => {
+  const ac = new AudioContext();
+  const sender = new RTCPeerConnection();
+  const receiver = new RTCPeerConnection({ encodedInsertableStreams: true });
+  sender.onicecandidate = (e) => e.candidate && receiver.addIceCandidate(e.candidate);
+  receiver.onicecandidate = (e) => e.candidate && sender.addIceCandidate(e.candidate);
+
+  // Tone i plays in its own 2-second blocks, sent over the call...
+  // Meet's decoder plays a voice a while after its packets arrive (jitter buffer): ?delay=ms.
+  const decoderDelay = Number(new URLSearchParams(location.search).get('delay') || 0) / 1000;
+  const schedule = (gainNode, i, late = 0) => {
+    for (let t = 0; t < 120; t += 2) gainNode.gain.setValueAtTime((t / 2) % 2 === i ? 0.2 : 0, ac.currentTime + t + late);
+  };
+  // ...and the same tone, on the same clock, stands in for what Meet's own decoder plays.
+  // Wired like Meet: a 'neteq-processor' worklet with one output per slot; each output goes
+  // through a gain to the speakers, and as a copy (destination node) to a second context
+  // where Meet's speaking analyzer listens.
+  const decoderCode = `registerProcessor('neteq-processor', class extends AudioWorkletProcessor {
+    process(inputs, outputs) {
+      outputs.forEach((out, i) => out.forEach((ch, c) => { const src = inputs[i] && inputs[i][c]; if (src) ch.set(src); }));
+      return true;
+    }
+  });`;
+  await ac.audioWorklet.addModule(URL.createObjectURL(new Blob([decoderCode], { type: 'text/javascript' })));
+  const decoder = new AudioWorkletNode(ac, 'neteq-processor', { numberOfInputs: 2, numberOfOutputs: 2, outputChannelCount: [1, 1] });
+  window.speakerTaps = [];
+  const analyzerCtx = new AudioContext();
+  for (const i of [0, 1]) {
+    const toSpeakers = ac.createGain();
+    decoder.connect(toSpeakers, i);
+    toSpeakers.connect(ac.destination);
+    // What actually reaches the speakers from this slot, for the test to measure.
+    const tap = ac.createAnalyser();
+    toSpeakers.connect(tap);
+    window.speakerTaps.push(tap);
+    const copy = ac.createMediaStreamDestination();
+    decoder.connect(copy, i);
+    analyzerCtx.createMediaStreamSource(copy.stream).connect(analyzerCtx.createAnalyser());
+  }
+  for (const [i, freq] of [[0, 440], [1, 660]]) {
+    const osc = ac.createOscillator();
+    osc.frequency.value = freq;
+    const amp = ac.createGain();
+    amp.gain.value = 0;
+    schedule(amp, i);
+    const dest = ac.createMediaStreamDestination();
+    osc.connect(amp).connect(dest);
+    osc.start();
+    sender.addTrack(dest.stream.getAudioTracks()[0], dest.stream);
+
+    const decodedOsc = ac.createOscillator();
+    decodedOsc.frequency.value = freq;
+    const decodedAmp = ac.createGain();
+    decodedAmp.gain.value = 0;
+    schedule(decodedAmp, i, decoderDelay);
+    decodedOsc.connect(decodedAmp).connect(decoder, 0, i);
+    decodedOsc.start();
+  }
+
+  receiver.ontrack = (e) => {
+    const { readable, writable } = e.receiver.createEncodedStreams();
+    readable.pipeTo(writable);
+  };
+
+  await sender.setLocalDescription();
+  await receiver.setRemoteDescription(sender.localDescription);
+  await receiver.setLocalDescription();
+  await sender.setRemoteDescription(receiver.localDescription);
+  document.getElementById('log').textContent = 'Call running.';
+
+  // Speaking display: the talking tile's ring flickers (a little after the sound, like Meet),
+  // and now and then every tile changes something unrelated (noise).
+  const rings = [...document.querySelectorAll('.tile .ring')];
+  const started = ac.currentTime;
+  setInterval(() => {
+    const t = ac.currentTime - started - 0.15;
+    const talker = t < 0 ? -1 : Math.floor(t / 2) % 2;
+    rings.forEach((r, i) => r.classList.toggle('speaking', i === talker && Math.random() < 0.8));
+    if (Math.random() < 0.1) rings[Math.floor(Math.random() * rings.length)].classList.toggle('noise');
+  }, 100);
+});
+</script>
+</body>
+</html>
