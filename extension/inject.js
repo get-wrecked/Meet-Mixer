@@ -9,7 +9,7 @@
 
   // Shown in the panel title and in Copy details, to see which copy is running.
   // Raise it with every change sent out, together with "version" in manifest.json.
-  const VERSION = 19;
+  const VERSION = 20;
   const STORE_KEY = 'meetMixer.v1';
   const MAX_PERCENT = 300;
   const TICK_MS = 20;
@@ -930,7 +930,13 @@
     renderStatus();
   }
 
-  // Everything about the call's audio path, as plain data (no names, only counts and ids).
+  // Everything about the call's audio path, as plain data: counts and ids, never names. People
+  // paste this into public bug reports, so a name found in Meet shows as [name] and a text with
+  // no name found only as its length.
+  const hideName = (texts) => {
+    const name = pickName(texts);
+    return texts.map((t) => (name && t.includes(name) ? t.split(name).join('[name]') : `[${t.length} letters]`));
+  };
   async function collectDetails() {
     const trackInfo = (t) => {
       let depth = 0;
@@ -981,12 +987,12 @@
       audioGraph: [...graph.edges].map(([edge, times]) => (times > 1 ? `${edge} ×${times}` : edge)),
       participants: [...participants.values()].map((p) => ({
         id: String(p.id).slice(-8),
-        names: nameCandidates(p.el),
+        names: hideName(nameCandidates(p.el)),
         quiet: p.quiet,
         byVoice: Object.fromEntries([...p.byVoice].map(([v, n]) => [v.number, n])),
         classes: [...p.classes].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([c, n]) => `${c} ×${n}`),
       })),
-      voiceNames: [...voices.values()].map((v) => ({ number: v.number, typed: v.name, fromMeet: v.autoName })),
+      voiceNames: [...voices.values()].map((v) => ({ number: v.number, typed: !!v.name, fromMeet: !!v.autoName })),
       ourAudio: ctx ? ctx.state : 'none',
       slots: slots.map((slot) => {
         const last = slot.recent[slot.recent.length - 1];
